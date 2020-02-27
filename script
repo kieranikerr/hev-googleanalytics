@@ -5,6 +5,9 @@ library(stringr)
 install.packages("dplyr")
 library(dplyr)
 
+install.packages("plyr")
+library(plyr)
+
 #authorizes R to establish a connection with our GA account
 ga_auth()
 
@@ -45,3 +48,22 @@ for (i in 1:nrow(hev.segments)){
   
 i=i+1  
 }
+
+#turn segment list into dataframe so it is no longer nested
+segList <- as.data.frame(llply(segList, unlist))
+segList <- gather(segList)
+segList <- segList[2]
+
+
+i=1
+for (i in 1:15){
+  data <- google_analytics(ga_id, 
+                           date_range = c("2019-12-01", "2020-01-01"), 
+                           metrics = "sessions", 
+                           dimensions = c("year","month","hostname"),
+                           segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                           anti_sample = TRUE)
+  i = i+1
+  
+}
+
