@@ -29,19 +29,19 @@ hev.segments <- select(hev.segments.allfields,id,segmentId,name)
 #test query with segment and unsampled data
 test <- segment_ga4("FCA 2020 HEV 4x4  Story module clicks", segment_id = "gaid::nfqCa3bSQGWRCsIAksdv3w")
 
-test_segmented <- google_analytics(ga_id, 
+test_segment <- google_analytics(ga_id, 
                                    date_range = c("2019-12-01", "2020-01-01"), 
                                    metrics = "sessions", 
                                    dimensions = c("year","month","hostname"),
                                    segments = test,
                                    anti_sample = TRUE)
-#test creating segment object from our list of HEV segments
-segment.v4 <- segment_ga4("hev.segments$name",segment_id = hev.segments$segmentId)
 
-#create a string that will populate with segment name and id fields
-hev_segment_query <- paste("segment_ga4('",hev.segments$name,"',segment_id='",hev.segments$segmentId,"')",sep="")
-
-#bind the HEV segments to our already existing HEV segment dataframe
-hev.segments <- cbind(hev.segments,hev_segment_query)
-
-
+#iterate through segment ids and names to pull segments into a list
+segList <- list()
+for (i in 1:nrow(hev.segments)){
+  row <- hev.segments[i,]
+  segment <- segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i])
+  segList[[i]] <- segment
+  
+i=i+1  
+}
