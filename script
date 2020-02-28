@@ -37,34 +37,91 @@ test_segment <- google_analytics(ga_id,
                                    metrics = "sessions", 
                                    dimensions = c("year","month","hostname"),
                                    segments = test,
+                                   filtersExpression = "ga:hostname==www.jeep.ca",
                                    anti_sample = TRUE)
 
-#iterate through segment ids and names to pull segments into a list
-#segList <- list()
-#for (i in 1:nrow(hev.segments)){
-#  row <- hev.segments[i,]
-#  segment <- segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i])
-#  segList[[i]] <- segment
-  
-#i=i+1  
-#}
+#start querying the GA reporting API against all hev segments by brand, so that we can look at one to one correlation first
 
-#turn segment list into dataframe so it is no longer nested
-#segList <- as.data.frame(llply(segList, unlist))
-#segList <- gather(segList)
-#segList <- segList[2]
-
-
+#jeep query
 i=1
 for (i in 1:nrow(hev.segments)){
-  data <- google_analytics(ga_id, 
-                           date_range = c("2019-12-01", "2020-01-01"), 
+  segmentdata <- google_analytics(ga_id, 
+                           date_range = c("2019-01-01", "2020-02-29"), 
                            metrics = "sessions", 
-                           dimensions = c("year","month","hostname"),
+                           dimensions = c("year","month"),
                            segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                           filtersExpression = "ga:hostname==www.jeep.ca",
                            anti_sample = TRUE)
-
-    assign(paste0("df", i), data)
+    newsegment <- assign(paste0(jeep,"hevsegment", i), segmentdata)
   i = i+1
 }
 
+#ram query
+i=1
+for (i in 1:nrow(hev.segments)){
+  segmentdata <- google_analytics(ga_id, 
+                                  date_range = c("2019-01-01", "2020-02-29"), 
+                                  metrics = "sessions", 
+                                  dimensions = c("year","month"),
+                                  segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                                  filtersExpression = "ga:hostname==www.ramtruck.ca",
+                                  anti_sample = TRUE)
+  newsegment <- assign(paste0(ramtruck,"hevsegment", i), segmentdata)
+  i = i+1
+}
+
+#dodge query
+i=1
+for (i in 1:nrow(hev.segments)){
+  segmentdata <- google_analytics(ga_id, 
+                                  date_range = c("2019-01-01", "2020-02-29"), 
+                                  metrics = "sessions", 
+                                  dimensions = c("year","month"),
+                                  segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                                  filtersExpression = "ga:hostname==www.dodge.ca",
+                                  anti_sample = TRUE)
+  newsegment <- assign(paste0(dodge,"hevsegment", i), segmentdata)
+  i = i+1
+}
+
+#chrysler query
+i=1
+for (i in 1:nrow(hev.segments)){
+  segmentdata <- google_analytics(ga_id, 
+                                  date_range = c("2019-01-01", "2020-02-29"), 
+                                  metrics = "sessions", 
+                                  dimensions = c("year","month"),
+                                  segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                                  filtersExpression = "ga:hostname==www.chrysler.ca",
+                                  anti_sample = TRUE)
+  newsegment <- assign(paste0(chrysler,"hevsegment", i), segmentdata)
+  i = i+1
+}
+
+#fiat query
+i=1
+for (i in 1:nrow(hev.segments)){
+  segmentdata <- google_analytics(ga_id, 
+                                  date_range = c("2019-01-01", "2020-02-29"), 
+                                  metrics = "sessions", 
+                                  dimensions = c("year","month"),
+                                  segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                                  filtersExpression = "ga:hostname==www.fiatcanada.com",
+                                  anti_sample = TRUE)
+  newsegment <- assign(paste0(fiat,"hevsegment", i), segmentdata)
+  i = i+1
+}
+
+#alfa query
+i=1
+for (i in 1:nrow(hev.segments)){
+  segmentdata <- google_analytics(ga_id, 
+                                  date_range = c("2019-01-01", "2020-02-29"), 
+                                  metrics = "sessions", 
+                                  dimensions = c("year","month"),
+                                  segments = segment_ga4(hev.segments$name[i], segment_id = hev.segments$segmentId[i]),
+                                  filtersExpression = "ga:hostname==www.alfaromeo.ca",
+                                  anti_sample = TRUE)
+  newsegment <- assign(paste0(alfa,"hevsegment", i), segmentdata)
+  i = i+1
+}
