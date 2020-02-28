@@ -125,3 +125,12 @@ for (i in 1:nrow(hev.segments)){
   newsegment <- assign(paste0(alfa,"hevsegment", i), segmentdata)
   i = i+1
 }
+
+
+#for each hev segment, calculate some basic statistics (min, max, average, variance, 
+              #number of data points, number of extreme outliers, shapiro wilk statistic)
+#pearson correlation coefficient has the following assumptions: 
+              #normality of variables, linearity, and homoscedasticity
+#to test the normality of our hev segments, we will use the shapiro wilk test
+
+
