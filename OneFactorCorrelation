@@ -1,11 +1,13 @@
+#install necessary packages
 install.packages("googleAnalyticsR", dependencies=TRUE)
-library(googleAnalyticsR)
 install.packages("stringr")
-library(stringr)
 install.packages("dplyr")
-library(dplyr)
-
 install.packages("plyr")
+
+#load necessary libraries
+library(googleAnalyticsR)
+library(stringr)
+library(dplyr)
 library(plyr)
 
 #authorizes R to establish a connection with our GA account
@@ -42,7 +44,10 @@ test_segment <- google_analytics(ga_id,
 
 #start querying the GA reporting API against all hev segments by brand, so that we can look at one to one correlation first
 
-list.brandhevsegments <- list()
+list.sessions <- list()
+list.year <- list()
+list.month <- list()
+list.segmentname <- list()
 list.hevnames <- list()
 
 #jeep query
@@ -57,21 +62,37 @@ for (i in 1:3){
                            filtersExpression = "ga:hostname==www.jeep.ca",
                            anti_sample = TRUE)
   
-    segmentname <- paste0("jeep","hevsegment", i)
+    #segmentnum <- paste0("jeep","hevsegment", i)
     segmentdata <- as.data.frame(segmentdata)
-    newsegment <- assign(segmentname, segmentdata)
     
-    list.brandhevsegments <- append(list.brandhevsegments,newsegment$segment[1])
-    list.hevnames <- append(list.hevnames,segmentname)
+    segmentsessions <- segmentdata$sessions
+    segmentyear <- segmentdata$year
+    segmentmonth <- segmentdata$month
+    segmentname <- segmentdata$segment
+
+    list.sessions <- append(list.sessions,segmentsessions)
+    list.year <- append(list.year,segmentyear)
+    list.month <- append(list.month,segmentmonth)
+    list.segmentname <- append(list.segmentname,segmentname)
+    list.hevnames <- append(list.hevnames,segmentnum)
     
   i = i+1
 }
 
-list.hevnames <- do.call(rbind, list.hevnames)
-colnames(list.hevnames) <- c("hev.segment")
+list.sessions <- do.call(rbind, list.sessions)
+colnames(list.sessions) <- c("sessions")
 
-#check that the number of rows in our hev.segment list is the same as the number of segments we've pulled via the api
-stopifnot(length(list.brandhevsegments)==length(list.hevnames))
+list.year <- do.call(rbind, list.year)
+colnames(list.year) <- c("year")
+
+list.month <- do.call(rbind, list.month)
+colnames(list.month) <- c("month")
+
+list.segmentname <- do.call(rbind, list.segmentname)
+colnames(list.segmentname) <- c("segmentname")
+
+#bind all of our columns together
+jeephevdata <- data.frame(list.segmentname,list.year,list.month,list.sessions)
 
 
 #for each hev segment, calculate some basic statistics (min, max, average, variance, 
@@ -80,3 +101,48 @@ stopifnot(length(list.brandhevsegments)==length(list.hevnames))
 #normality of variables, linearity, and homoscedasticity
 #to test the normality of our hev segments, we will use the shapiro wilk test
 
+jeepmean <- aggregate( sessions ~ segmentname, jeephevdata, mean )
+jeepmax <- aggregate( sessions ~ segmentname, jeephevdata, max )
+jeepmin <- aggregate( sessions ~ segmentname, jeephevdata, min )
+jeepvariance <- aggregate( sessions ~ segmentname, jeephevdata, var )
+jeepcount <- aggregate( sessions ~ segmentname, jeephevdata, length )
+
+
+#make a function that defines the lower bound for an outlier
+jeepoutlierlowerbound <- function(x){
+  quantile(x, 0.25)*1.5
+}
+jeepoutlierlowerbound <- aggregate( sessions ~ segmentname, jeephevdata, jeepoutlierlowerbound )
+
+
+#make a function that defines the upper bound for an outlier
+jeepoutlierupperbound <- function(x){
+  quantile(x, 0.75)*1.5
+}
+jeepoutlierupperbound <- aggregate( sessions ~ segmentname, jeephevdata, jeepoutlierupperbound )
+
+
+#now use these upper and lower bounds to flag extreme outliers so that we can count them
+
+
+
+
+
+
+#define function for shapiro wilk statistic
+jeepshapiro <- function(x){
+  shapiro <- shapiro.test(x)
+  #this returns the p-value of the shapiro wilk test
+  return(shapiro[[2]])
+}
+jeepshapiro <- aggregate( sessions ~ segmentname, jeephevdata, jeepshapiro )
+
+
+#check to make sure that we've calculated our parameters for all of our segments
+stopifnot(length(jeepmean)==length(jeepmax))
+stopifnot(length(jeepmean)==length(jeepmin))
+stopifnot(length(jeepmean)==length(jeepvariance))
+stopifnot(length(jeepmean)==length(jeepcount))
+stopifnot(length(jeepmean)==length(jeepoutlierlowerbound))
+stopifnot(length(jeepmean)==length(jeepoutlierupperbound))
+stopifnot(length(jeepmean)==length(jeepshapiro))
