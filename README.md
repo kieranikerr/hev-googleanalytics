@@ -3,6 +3,7 @@
 **Objective:** To segment Google Analytics session data, based on various website actions, to determine whether a given segment or combination of segments is highly correlated to sales.
 
 **Scripts in this repo:**
+
 *"OneFactorCorrelation"* will determine one to one correlations between segments and sales.
 
 *"TwoFactorCorrelation"* will determine correlation between a combination of two segments to sales.
