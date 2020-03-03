@@ -113,6 +113,7 @@ jeepoutlierlowerbound <- function(x){
   quantile(x, 0.25)*1.5
 }
 jeepoutlierlowerbound <- aggregate( sessions ~ segmentname, jeephevdata, jeepoutlierlowerbound )
+names(jeepoutlierlowerbound)[2] <- "lowerbound"
 
 
 #make a function that defines the upper bound for an outlier
@@ -120,14 +121,47 @@ jeepoutlierupperbound <- function(x){
   quantile(x, 0.75)*1.5
 }
 jeepoutlierupperbound <- aggregate( sessions ~ segmentname, jeephevdata, jeepoutlierupperbound )
+names(jeepoutlierupperbound)[2] <- "upperbound"
 
 
-#now use these upper and lower bounds to flag extreme outliers so that we can count them
+#now left join these upper and lower bounds to our main dataset so that we can flag which values fall above and below the bounds
+jeephevdata <-merge(x=jeephevdata,y=jeepoutlierupperbound,by="segmentname",all.x=TRUE)
+jeephevdata <-merge(x=jeephevdata,y=jeepoutlierlowerbound,by="segmentname",all.x=TRUE)
 
 
+#make a function to flag data points that are lower than the lower bound
+#make sessions the x value and the lower bound the y value
+
+#lower bound flag
+lowerbound.function <- function(x,y){
+  ifelse(x<y,1,0)
+}
+
+lowerflags <- data.frame(mapply(lowerbound.function,jeephevdata$sessions,jeephevdata$lowerbound))
+names(lowerflags)[1] <- "lowerboundflag"
+
+#bind our lowerbound flags to the original dataframe
+jeephevdata <- cbind(jeephevdata,lowerflags)
 
 
+#do the same thing for the upper bound now
+#make sessions the x value and the upper bound the y value
 
+#upper bound flag
+upperbound.function <- function(x,y){
+  ifelse(x>y,1,0)
+}
+
+upperflags <- data.frame(mapply(upperbound.function,jeephevdata$sessions,jeephevdata$upperbound))
+names(upperflags)[1] <- "upperboundflag"
+
+#bind our upperbound flags to the original dataframe
+jeephevdata <- cbind(jeephevdata,upperflags)
+
+
+#now that we have both upper and lower bound flags, count the number of flags ie. the number of upper and lower outliers we have
+jeepupperoutliers <- aggregate( upperboundflag ~ segmentname, jeephevdata, sum )
+jeeploweroutliers <- aggregate( lowerboundflag ~ segmentname, jeephevdata, sum )
 
 #define function for shapiro wilk statistic
 jeepshapiro <- function(x){
@@ -146,3 +180,30 @@ stopifnot(length(jeepmean)==length(jeepcount))
 stopifnot(length(jeepmean)==length(jeepoutlierlowerbound))
 stopifnot(length(jeepmean)==length(jeepoutlierupperbound))
 stopifnot(length(jeepmean)==length(jeepshapiro))
+stopifnot(length(jeepmean)==length(jeepupperoutliers))
+stopifnot(length(jeepmean)==length(jeeploweroutliers))
+
+#before merging all our summary stat dataframes together, we will rename the columns accordingly
+names(jeepmean)[2] <- "mean"
+names(jeepmax)[2] <- "max"
+names(jeepmin)[2] <- "min"
+names(jeepvariance)[2] <- "variance"
+names(jeepcount)[2] <- "count"
+names(jeepshapiro)[2] <- "shapiro"
+names(jeepupperoutliers)[2] <- "upperoutliers"
+names(jeeploweroutliers)[2] <- "loweroutliers"
+
+
+
+#now that we've calculated all our summary statistics, let's compile them into one dataframe
+jeep.summarystats <- merge(jeepmean,jeepmax,by="segmentname")
+jeep.summarystats <- merge(jeep.summarystats,jeepmin,by="segmentname")
+jeep.summarystats <- merge(jeep.summarystats,jeepvariance,by="segmentname")
+jeep.summarystats <- merge(jeep.summarystats,jeepcount,by="segmentname")
+jeep.summarystats <- merge(jeep.summarystats,jeepshapiro,by="segmentname")
+jeep.summarystats <- merge(jeep.summarystats,jeepupperoutliers,by="segmentname")
+jeep.summarystats <- merge(jeep.summarystats,jeeploweroutliers,by="segmentname")
+
+#export summary statistics for each of our segments as an excel so that the team can determine 
+#which should be included or excluded for further analysis
+write.csv(jeep.summarystats, file = "Desktop/segmentsummarystats.csv")
