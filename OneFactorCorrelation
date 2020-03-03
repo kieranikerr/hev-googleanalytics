@@ -2,13 +2,19 @@
 install.packages("googleAnalyticsR", dependencies=TRUE)
 install.packages("stringr")
 install.packages("dplyr")
-install.packages("plyr")
+#install.packages("plyr")
+install.packages("ggplot2")
+install.packages("ggpubr")
 
 #load necessary libraries
 library(googleAnalyticsR)
 library(stringr)
 library(dplyr)
-library(plyr)
+#library(plyr)
+library(ggplot2)
+library(ggpubr)
+library(readxl)
+
 
 #authorizes R to establish a connection with our GA account
 ga_auth()
@@ -207,3 +213,44 @@ jeep.summarystats <- merge(jeep.summarystats,jeeploweroutliers,by="segmentname")
 #export summary statistics for each of our segments as an excel so that the team can determine 
 #which should be included or excluded for further analysis
 write.csv(jeep.summarystats, file = "Desktop/segmentsummarystats.csv")
+
+
+#since our sample size for each segment is small, we will also graph each segment's session values to assess normality
+segment_list <-unique(jeephevdata$segmentname)
+
+#create a for loop to produce density plots and save on desktop
+for (i in seq_along(segment_list)) {
+  plot <- ggplot(subset(jeephevdata,segmentname==segment_list[i]), aes(x=sessions)) + 
+    geom_density(fill="#69b3a2", color="#e9ecef", alpha=0.8) + ggtitle(jeephevdata$segmentname[i])
+  ggsave(paste0("jeepdensity",i,".png"),path = "Desktop")
+  
+}
+
+
+#outside of R, determine which segments should be kept and which should be thrown out
+#in the csv file that we exported, delete the rows that we no longer want to analyze further
+#rename our csv file with the deleted rows as "jeep-chosensegments" and import
+chosensegments <- read_excel("Desktop/jeep-chosensegments.xlsx")
+chosensegments <- data.frame(chosensegments$segmentname)
+colnames(chosensegments) <- c("segmentname")
+
+#now go back to our initial file where we were collecting all segment session data and drop the segments that we no longer require
+jeephevdata <- merge(jeephevdata,chosensegments,by="segmentname")
+
+#import sales data from desktop
+hevsales <- read_excel("Desktop/hevsales.xlsx")
+
+#subset sales data so it's only jeep data
+jeep.hevsales <- subset(hevsales, brand=="JEEP")
+
+#join sales data to our hev segments
+jeep.hevsegments.sales <- merge(jeephevdata,jeep.hevsales,by=c("year","month"))
+
+#calculate correlation coefficients for our segments
+jeepcorr <- function(x,y){
+  cor(x, y, method = "pearson")
+}
+
+
+detach(package:plyr)
+jeepcorrelation <- jeep.hevsegments.sales %>% group_by(segmentname) %>% summarize(jeepcorr(sessions, retailsales))
