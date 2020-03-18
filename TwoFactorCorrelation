@@ -67,6 +67,9 @@ HEVsegments <- strsplit(as.character(HEVsegments), "AND")
 
 indexingcombos <- combinations(length(HEVseg$name),2)
 
+#---------------------------------------------------------------------------------------------------------------------#
+#-------------------------------THIS PART OF SCRIPT IS FOR TESTING PURPOSES ONLY--------------------------------------#
+#---------------------------------------------------------------------------------------------------------------------#
 
 #let's just grab some of our segments that we know will work and start working on a script to combine those ones
 firstelement <- HEVsegments[2]
@@ -80,29 +83,56 @@ testHEVsegments <- append(testHEVsegments,firstelement)
 testHEVsegments <- append(testHEVsegments,secondelement)
 testHEVsegments <- append(testHEVsegments,thirdelement)
 testHEVsegments <- append(testHEVsegments,fourthelement)
+#---------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------------#
 
-
-#create a list that contains the combinations of indexes for our test HEV segment list
-testindexcombo <- combinations(length(testHEVsegments),2)
 
 #first build individual segment definitions in a loop based on their row
 #the ith row of our list will be testHEVsegments[[i]]
-iterslist <- list()
-elementlist <- list()
-expr.elementlist <- list()
+segmentslisted <- list()
 i=1
+x=1
 for (i in 1:length(testHEVsegments)){
   iters <- length(testHEVsegments[[i]])
 #for each row in our HEV segment list, turn each element into an expression 
      for (x in 1:iters){
-      element <- Expr(as.formula(testHEVsegments[[i]][x]))
-      elementlist <- append(elementlist,element)
-#combine all expression elements into a formula now
-             for (k in 1:length(elementlist)){
-
-        }
-  }
-
+      element <- as.formula(testHEVsegments[[i]][x])
+      assign(paste("element", x, sep = "_"), element)
+#now combine elements to form our segments
+      if (iters==1) {segment <- Expr(element_1)} 
+      else if (iters==2) {segment <- Expr(element_1) & Expr(element_2)}
+      else if (iters==3) {segment <- Expr(element_1) & Expr(element_2) & Expr(element_3)} 
+      else {segment <- Expr(element_1) & Expr(element_2) & Expr(element_3) & Expr(element_4)}
+      listobject <- segment
+      segmentslisted <- list.append(segmentslisted,listobject)
+      #assign(paste("segment", i, sep = "_"), segment)
+      x=x+1    
+           }
   i=i+1
+}
+
+
+#---------------------------------------------------------------------------------------------------------------------#
+#--------------------------------NEED TO BUILD IN HIT EXCLUSION BUILDER HERE------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------------#
+
+#now that our individual segments are built, start creating segment combinations based on our index combo list
+#in this script, we will built segments that are a combo of only two segments
+
+#create a list that contains the combinations of indexes for our test HEV segment list
+testindexcombo <- data.frame(combinations(length(testHEVsegments),2))
+
+
+#use a loop to dynamically create combinations of our segments
+j=1
+for(j in 1:nrow(testindexcombo)){
+#get the values for which segment combination we will be combining
+  firstsegindex <- testindexcombo[j,1]
+  secondsegindex <- testindexcombo[j,2]
+
+ combinedsegment <- segmentslisted[[firstsegindex]] & segmentslisted[[secondsegindex]]
+ assign(paste("segment", firstsegindex, secondsegindex, sep = "_"), combinedsegment)
+ j=j+1
 }
 
