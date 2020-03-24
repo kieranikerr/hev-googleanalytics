@@ -24,6 +24,10 @@ all.segments <- as.data.frame(ga_segment_list())
 HEVseg <- subset(all.segments,grepl("HEV",name))
 
 HEVseg <- data.frame(HEVseg)
+segmentindex <- data.frame(c(1:length(HEVseg$name)))
+names(segmentindex)[1] <-"index"
+HEVseg1 <- cbind(HEVseg,segmentindex)
+
 
 HEVseg$definition <- gsub("sessions::condition::", "", HEVseg$definition)
 
@@ -108,7 +112,7 @@ for (i in 1:length(testHEVsegments)){
       segmentslisted <- list.append(segmentslisted,listobject)
       #assign(paste("segment", i, sep = "_"), segment)
       x=x+1    
-           }
+     }
   i=i+1
 }
 
@@ -123,8 +127,11 @@ for (i in 1:length(testHEVsegments)){
 #create a list that contains the combinations of indexes for our test HEV segment list
 testindexcombo <- data.frame(combinations(length(testHEVsegments),2))
 
+#segmentnamelist <- list()
 
 #use a loop to dynamically create combinations of our segments
+jeep.twofactor.dataframe <- data.frame()
+require(dplyr)
 j=1
 for(j in 1:nrow(testindexcombo)){
 #get the values for which segment combination we will be combining
@@ -132,7 +139,219 @@ for(j in 1:nrow(testindexcombo)){
   secondsegindex <- testindexcombo[j,2]
 
  combinedsegment <- segmentslisted[[firstsegindex]] & segmentslisted[[secondsegindex]]
- assign(paste("segment", firstsegindex, secondsegindex, sep = "_"), combinedsegment)
+ jeep.twofactorquery <- google_analytics(viewId = 186738676,
+                                    date_range = c("2020-01-01", "2020-02-01"),
+                                    metrics = c("sessions"),
+                                    dimensions = c("month", "year", "hostname"),
+                                    filtersExpression = "ga:hostname==www.jeep.ca",
+                                    segments = Segments(combinedsegment),
+                                    anti_sample = TRUE)
+ 
+ jeep.twofactorquery <- data.frame(jeep.twofactorquery$month,jeep.twofactorquery$year,jeep.twofactorquery$sessions)
+ names(jeep.twofactorquery) <- c("month", "year","combined.sessions")
+ 
+ #get our first segment
+ firstsegdata <- subset(all.jeephevdata,index==firstsegindex)
+ firstsegdata <- subset(firstsegdata, select=c("segmentname", "year", "month","sessions","index"))
+ names(firstsegdata) <- c("first.segmentname", "year", "month","first.sessions","first.index")
+ 
+ #join our two factor query to the first segment
+ jeep.combinedquery <- merge(x = firstsegdata, y = jeep.twofactorquery, by = c("month","year"), all = TRUE)
+ jeep.combinedquery[is.na(jeep.combinedquery)] <- 0
+ 
+ #now get our second segment
+ secondsegdata <- subset(all.jeephevdata,index==secondsegindex)
+ secondsegdata <- subset(secondsegdata, select=c("segmentname", "year", "month","sessions","index"))
+ names(secondsegdata) <- c("second.segmentname", "year", "month","second.sessions","second.index")
+ 
+ #now join to our second segment
+ jeep.combinedquery <- merge(x = secondsegdata, y = jeep.combinedquery, by = c("month","year"), all = TRUE)
+ jeep.combinedquery[is.na(jeep.combinedquery)] <- 0
+ 
+ #append to all of our other combinations
+ jeep.twofactor.dataframe <- bind_rows(jeep.twofactor.dataframe, jeep.combinedquery)
+ 
  j=j+1
 }
 
+jeep.twofactor.dataframe <- jeep.twofactor.dataframe %>% mutate(combinedindex = paste(jeep.twofactor.dataframe$first.index,
+                                                                            jeep.twofactor.dataframe$second.index,sep="_"))
+
+#add our calculated field to dataframe which is firstsegsessions+secondsegsessions-combinedsessions
+jeep.twofactor.dataframe <- jeep.twofactor.dataframe %>% mutate(hev.sessions = first.sessions + second.sessions - combined.sessions)
+
+##########
+########
+#####
+#check that the number of combo segments we created is equal to the length of the list that contains all combo segments
+assertthat::length(testindexcombo$X1)=
+##########
+########
+#####
+  
+#for each hev segment, calculate some basic statistics (min, max, average, variance, 
+#number of data points, number of extreme outliers, shapiro wilk statistic)
+#pearson correlation coefficient has the following assumptions: 
+#normality of variables, linearity, and homoscedasticity
+#to test the normality of our hev segments, we will use the shapiro wilk test
+  
+jeep.twofactor.mean <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, mean )
+jeep.twofactor.max <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, max )
+jeep.twofactor.min <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, min )
+jeep.twofactor.variance <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, var )
+jeep.twofactor.count <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, length )
+
+
+#make a function that defines the lower bound for an outlier
+jeepoutlierlowerbound <- function(x){
+  quantile(x, 0.25)*1.5
+}
+jeep.twofactor.outlierlowerbound <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, jeepoutlierlowerbound )
+names(jeep.twofactor.outlierlowerbound)[2] <- "lowerbound"
+
+
+#make a function that defines the upper bound for an outlier
+jeepoutlierupperbound <- function(x){
+  quantile(x, 0.75)*1.5
+}
+jeep.twofactor.outlierupperbound <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, jeepoutlierupperbound )
+names(jeep.twofactor.outlierupperbound)[2] <- "upperbound"
+
+
+#now left join these upper and lower bounds to our main dataset so that we can flag which values fall above and below the bounds
+jeep.twofactor.dataframe <-merge(x=jeep.twofactor.dataframe,y=jeep.twofactor.outlierupperbound,by="combinedindex",all.x=TRUE)
+jeep.twofactor.dataframe <-merge(x=jeep.twofactor.dataframe,y=jeep.twofactor.outlierlowerbound,by="combinedindex",all.x=TRUE)
+
+
+#make a function to flag data points that are lower than the lower bound
+#make sessions the x value and the lower bound the y value
+
+#lower bound flag
+lowerbound.function <- function(x,y){
+  ifelse(x<y,1,0)
+}
+
+lowerflags <- data.frame(mapply(lowerbound.function,jeep.twofactor.dataframe$hev.sessions,jeep.twofactor.dataframe$lowerbound))
+names(lowerflags)[1] <- "lowerboundflag"
+
+#bind our lowerbound flags to the original dataframe
+jeep.twofactor.dataframe <- cbind(jeep.twofactor.dataframe,lowerflags)
+
+
+#do the same thing for the upper bound now
+#make sessions the x value and the upper bound the y value
+
+#upper bound flag
+upperbound.function <- function(x,y){
+  ifelse(x>y,1,0)
+}
+
+upperflags <- data.frame(mapply(upperbound.function,jeep.twofactor.dataframe$hev.sessions,jeep.twofactor.dataframe$upperbound))
+names(upperflags)[1] <- "upperboundflag"
+
+#bind our upperbound flags to the original dataframe
+jeep.twofactor.dataframe <- cbind(jeep.twofactor.dataframe,upperflags)
+
+
+#now that we have both upper and lower bound flags, count the number of flags ie. the number of upper and lower outliers we have
+jeep.twofactor.upperoutliers <- aggregate( upperboundflag ~ combinedindex, jeep.twofactor.dataframe, sum )
+jeep.twofactor.loweroutliers <- aggregate( lowerboundflag ~ combinedindex, jeep.twofactor.dataframe, sum )
+
+#define function for shapiro wilk statistic
+jeepshapiro <- function(x){
+  shapiro <- shapiro.test(x)
+  #this returns the p-value of the shapiro wilk test
+  return(shapiro[[2]])
+}
+
+jeep.twofactor.shapiro <- aggregate( hev.sessions ~ combinedindex, jeep.twofactor.dataframe, jeepshapiro )  
+  
+
+#check to make sure that we've calculated our parameters for all of our segments
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.max))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.min))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.variance))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.count))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.outlierlowerbound))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.outlierupperbound))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.shapiro))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.upperoutliers))
+stopifnot(length(jeep.twofactor.mean)==length(jeep.twofactor.loweroutliers))
+  
+
+#before merging all our summary stat dataframes together, we will rename the columns accordingly
+names(jeep.twofactor.mean)[2] <- "mean"
+names(jeep.twofactor.max)[2] <- "max"
+names(jeep.twofactor.min)[2] <- "min"
+names(jeep.twofactor.variance)[2] <- "variance"
+names(jeep.twofactor.count)[2] <- "count"
+names(jeep.twofactor.shapiro)[2] <- "shapiro"
+names(jeep.twofactor.upperoutliers)[2] <- "upperoutliers"
+names(jeep.twofactor.loweroutliers)[2] <- "loweroutliers"
+
+#now that we've calculated all our summary statistics, let's compile them into one dataframe
+jeep.twofactor.summarystats <- merge(jeep.twofactor.mean,jeep.twofactor.max,by="combinedindex")
+jeep.twofactor.summarystats <- merge(jeep.twofactor.summarystats,jeep.twofactor.min,by="combinedindex")
+jeep.twofactor.summarystats <- merge(jeep.twofactor.summarystats,jeep.twofactor.variance,by="combinedindex")
+jeep.twofactor.summarystats <- merge(jeep.twofactor.summarystats,jeep.twofactor.count,by="combinedindex")
+jeep.twofactor.summarystats <- merge(jeep.twofactor.summarystats,jeep.twofactor.shapiro,by="combinedindex")
+jeep.twofactor.summarystats <- merge(jeep.twofactor.summarystats,jeep.twofactor.upperoutliers,by="combinedindex")
+jeep.twofactor.summarystats <- merge(jeep.twofactor.summarystats,jeep.twofactor.loweroutliers,by="combinedindex")
+
+#export summary statistics for each of our segments as an excel so that the team can determine 
+#which should be included or excluded for further analysis
+write.csv(jeep.twofactor.summarystats, file = "Desktop/jeep-twofactor-segmentsummarystats.csv")
+
+
+#since our sample size for each segment is small, we will also graph each segment's session values to assess normality
+segment_list <-unique(jeep.twofactor.dataframe$combinedindex)
+
+#create a for loop to produce density plots and save on desktop
+for (i in seq_along(segment_list)) {
+  plot <- ggplot(subset(jeep.twofactor.dataframe,combinedindex==segment_list[i]), aes(x=hev.sessions)) + 
+    geom_density(fill="#69b3a2", color="#e9ecef", alpha=0.8) + ggtitle(segment_list[i])
+  ggsave(paste0("jeepdensity",i,".png"),path = "Desktop")
+  
+}
+
+
+#outside of R, determine which segments should be kept and which should be thrown out
+#in the csv file that we exported, delete the rows that we no longer want to analyze further
+#rename our csv file with the deleted rows as "jeep-twofactor-chosensegments" and import
+twofactor.chosensegments <- read_excel("Desktop/jeep-twofactor-chosensegments.xlsx")
+chosencombinedindex <- data.frame(twofactor.chosensegments$combinedindex)
+colnames(chosencombinedindex) <- c("combinedindex")
+
+#now go back to our initial file where we were collecting all segment session data and drop the segments that we no longer require
+jeep.twofactor.dataframe <- merge(jeep.twofactor.dataframe,chosencombinedindex,by="combinedindex")
+
+#import sales data from desktop
+hevsales <- read_excel("Desktop/hevsales.xlsx")
+
+#subset sales data so it's only jeep data
+jeep.hevsales <- subset(hevsales, brand=="JEEP")
+
+#join sales data to our hev segments
+jeep.twofactor.hevsegments.sales <- merge(jeep.twofactor.dataframe,jeep.hevsales,by=c("year","month"))
+
+#calculate correlation coefficients for our segments
+jeepcorr <- function(x,y){
+  cor(x, y, method = "pearson")
+}
+
+detach(package:plyr)
+jeep.twofactor.correlation <- jeep.twofactor.hevsegments.sales %>% group_by(combinedindex) %>% summarize(jeepcorr(hev.sessions, retailsales))
+#rename the correlation column  
+colnames(jeep.twofactor.correlation) <- c("combinedindex","correlation")
+
+#now that correlation coefficients have been calculated, categorize by weak, medium, strong correlation
+correlationthresholds <- c(-1,0.5,0.7,1)
+corrlabels <- c("weak","moderate","strong")
+
+setDT(jeep.twofactor.correlation)[ , corrcategory := cut(correlation, 
+                                              breaks = correlationthresholds, 
+                                              right = FALSE, 
+                                              labels = corrlabels)]
+
+#export file of categorized segments
+write.csv(jeep.twofactor.correlation, file = "Desktop/jeep-twofactor-correlations-categorized.csv")
